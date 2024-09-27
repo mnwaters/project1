@@ -1,0 +1,58 @@
+Project 1
+
+Objective: Create generic functions to automatically summarize and plot certain returned data.
+
+Authors: Meerah Waters and Jack Wetzel
+
+## Task 1: Data Processing
+
+1.  First we need to install the tidycensus, jsonlite, httr, and the tibble packages
+
+    ```{r}
+    library(tidycensus)
+    library(jsonlite)
+    library(httr)
+    library(tibble)
+    library(dplyr)
+    ```
+
+2.  Then we need to call the API
+
+    ```{r}
+    acsData <- GET('https://api.census.gov/data/2022/acs/acs1/pums?get=YOEP,AGEP,GASP,GRPIP,JWAP,JWDP,SEX,FER,HHL,HISPEED,JWTRNS,SCH,SCHL,PWGTP&for=state:04&key=97a64e065dd2ad57196b96e8f6e9809d0ac9abc4')
+    ```
+
+3.  Then we need to parse the JSON data and put it in tibble format
+
+    ```{r}
+    parsed <- fromJSON(rawToChar(acsData$content))
+    acsDataTib <- as_tibble(parsed)
+    names(acsDataTib)<-acsDataTib[1,]
+    acsDataTib<- acsDataTib[-1,]
+    acsDataTib
+    ```
+
+4.  Now were going to write a function to query the API that will allow the user to specify certain items. The function allows for the individual to select what Numerical Variables they wish, Categorical Variables, and the Geography from the inputs into the function. How the function is written, causes only one singular "Geography" selection, while the Numerical and Categorical Variables are able to have multiple responses, as these are only the column headers being selected.
+
+    ```{r}
+    acsFunction <- function( year, NumericalVar =c("PWGTP", "AGEP", "GASP", "GRPIP", "JWAP (time)", "JWDP (time)","JWMNMP"), CategoricalVar = c("FER", "HHL", "HISPEED", "JWTRNS","SCH", "SCHL", "SEX"), Geography = c("All", "region", "division", "state")){
+
+      url<-glue::glue('https://api.census.gov/data/2022/acs/acs1/pums?get=YOEP,AGEP,GASP,GRPIP,JWAP,JWDP,SEX,FER,HHL,HISPEED,JWTRNS,SCH,SCHL,PWGTP&for={Geography}:04&key=97a64e065dd2ad57196b96e8f6e9809d0ac9abc4')
+      
+      
+      acsData <- GET(url)
+      
+      parsed <- fromJSON(rawToChar(acsData$content))
+      
+      acsDataTib <- as_tibble(parsed)
+      names(acsDataTib)<-acsDataTib[1,]
+      acsDataTib<- acsDataTib[-1,]
+      
+      acsDataTibFiltered<-acsDataTib %>% 
+        filter(YOEP == {year}) %>% 
+        select(YOEP, "PWGTP", {NumericalVar}, {CategoricalVar})
+    }
+
+    Result<-acsFunction(2022,"PWGTP",c("FER","HHL") ,"state")
+    Result2<-acsFunction(2022,"PWGTP","FER","division")
+    ```
