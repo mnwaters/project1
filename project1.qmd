@@ -35,7 +35,7 @@ Authors: Meerah Waters and Jack Wetzel
 4.  Now were going to write a function to query the API that will allow the user to specify certain items. The function allows for the individual to select what Numerical Variables they wish, Categorical Variables, and the Geography from the inputs into the function. How the function is written, causes only one singular "Geography" selection, while the Numerical and Categorical Variables are able to have multiple responses, as these are only the column headers being selected.
 
     ```{r}
-    acsFunction <- function( year, NumericalVar =c("PWGTP", "AGEP", "GASP", "GRPIP", "JWAP (time)", "JWDP (time)","JWMNMP"), CategoricalVar = c("FER", "HHL", "HISPEED", "JWTRNS","SCH", "SCHL", "SEX"), Geography = c("All", "region", "division", "state")){
+    acsFunction <- function( year, NumericalVar =c("PWGTP", "AGEP", "GASP", "GRPIP", "JWAP (time)", "JWDP (time)","JWMNMP"), CategoricalVar = c("FER", "HHL", "HISPEED", "JWTRNS","SCH", "SCHL", "SEX"), Geography = c("region", "division", "state")){
 
       url<-glue::glue('https://api.census.gov/data/2022/acs/acs1/pums?get=YOEP,AGEP,GASP,GRPIP,JWAP,JWDP,SEX,FER,HHL,HISPEED,JWTRNS,SCH,SCHL,PWGTP&for={Geography}:04&key=97a64e065dd2ad57196b96e8f6e9809d0ac9abc4')
       
@@ -52,6 +52,8 @@ Authors: Meerah Waters and Jack Wetzel
         filter(YOEP == {year}) %>% 
         select(YOEP, "PWGTP", {NumericalVar}, {CategoricalVar})
     }
+
+    ####Below is a Test to show that it works####
 
     Result<-acsFunction(2022,"PWGTP",c("FER","HHL") ,"state")
     Result2<-acsFunction(2022,"PWGTP","FER","division")
