@@ -37,6 +37,8 @@ Authors: Meerah Waters and Jack Wetzel
     ```{r}
     acsFunction <- function( year, NumericalVar =c("PWGTP", "AGEP", "GASP", "GRPIP", "JWAP (time)", "JWDP (time)","JWMNMP"), CategoricalVar = c("FER", "HHL", "HISPEED", "JWTRNS","SCH", "SCHL", "SEX"), Geography = c("region", "division", "state")){
 
+      ####The below area with "glue" allows for the URL to by dynamically changed based off the selection within Geography. To use "all" as an option, would be a different type of URL, possibly with the removal of the "&for={Geography}" section, but this wasn't working on its own (I used an ifelse statement to make 'url' and 'url2', but that failed)####
+      
       url<-glue::glue('https://api.census.gov/data/2022/acs/acs1/pums?get=YOEP,AGEP,GASP,GRPIP,JWAP,JWDP,SEX,FER,HHL,HISPEED,JWTRNS,SCH,SCHL,PWGTP&for={Geography}:04&key=97a64e065dd2ad57196b96e8f6e9809d0ac9abc4')
       
       
