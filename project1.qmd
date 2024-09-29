@@ -19,7 +19,7 @@ Authors: Meerah Waters and Jack Wetzel
 2.  Then we need to call the API
 
     ```{r}
-    acsData <- "https://api.census.gov/data/2022/acs/acs1/pums?get=YOEP,AGEP,GASP,GRPIP,JWAP,JWDP,SEX,FER,HHL,HISPEED,JWTRNS,SCH,SCHL,PWGTP&SCHL=24"
+    acsData <- "https://api.census.gov/data/2022/acs/acs1/pums?get=PWGTP,AGEP,SEX&for=region:04"
     ```
 
 3.  Then we need to parse the JSON data and put it in tibble format with the helper function
@@ -29,13 +29,12 @@ Authors: Meerah Waters and Jack Wetzel
       acsData <- GET(apiCall)
       parsed <- fromJSON(rawToChar(acsData$content))
       acsDataTib <- as_tibble(parsed)
-      names(acsDataTib)<-acsDataTib[1,]
-      acsDataTib<- acsDataTib[-1,]
+      names(acsDataTib) <- acsDataTib[1,]
+      acsDataTib <- acsDataTib[-1,]
     }
-    print(apiHelper(apiCall = acsData))
     ```
 
-4.  Now were going to write a function to query the API that will allow the user to specify certain items. The function allows for the individual to select what Numerical Variables they wish, Categorical Variables, and the Geography from the inputs into the function. How the function is written, causes only one singular "Geography" selection, while the Numerical and Categorical Variables are able to have multiple responses, as these are only the column headers being selected.
+4.  Now were going to write a function to query the API that will allow the user to specify certain items. The function allows for the individual to select a year, what Numerical Variables they wish, Categorical Variables, and the Geography from the inputs into the function. How the function is written, causes only one singular "Geography" selection, while the Numerical and Categorical Variables are able to have multiple responses, as these are only the column headers being selected.
 ```{r}
 year = 2022 
 numericalVar = c("PWGTP", "AGEP") 
@@ -53,7 +52,9 @@ url <- paste0("https://api.census.gov/data/",
                     geo_code
                     )
 url
-print(apiHelper(apiCall = url))
+temp <- apiHelper(apiCall = url)
+temp$AGEP <- as.numeric(temp$AGEP)
+temp
 ```
 
     ```{r}
@@ -63,8 +64,17 @@ print(apiHelper(apiCall = url))
                             geography = "state",
                             geo_code = "04") {
 
+      ## Checking if function input is valid
       if (year > 2022 | year < 2010) {
         stop("Year must be between 2010 and 2022")
+      }
+      
+      if (is.null(categoricalVar)) {
+        stop("One categorical variable must be returned")
+      }
+      
+      if (is.null(numericalVar)) {
+        stop("One numeric variable other than PWGTP must be returned")
       }
       
       if (!(geography %in% c("state", "division", "region"))) {
@@ -74,13 +84,15 @@ print(apiHelper(apiCall = url))
       if (is.null(geo_code)) {
         geo_code <- "*"
       }
+      
+      ## Building the URL
       variables <- paste(c(numericalVar, categoricalVar), collapse = ",")
       
       ## Ensures PWGTP is always printed
       if (!("PWGTP") %in% numericalVar) {
         variables <- paste("PWGTP", variables, sep = ",")
-        
       }
+      
       url <- paste0("https://api.census.gov/data/",
                     year,
                     "/acs/acs1/pums?get=",
@@ -92,13 +104,35 @@ print(apiHelper(apiCall = url))
                     )
       
       acsTibble <- apiHelper(apiCall = url)
+      
+      ## Making variables numeric
+      numericalVar <- numericalVar[!(numericalVar %in% c("JWAP", "JWDP"))]
+      acsTibble[numericalVar] <- lapply(acsTibble[numericalVar], as.numeric)
+      acsTibble$PWGTP <- as.numeric(acsTibble$PWGTP)
+      
+      ## Making variables factors
+      acsTibble[categoricalVar] <- lapply(acsTibble[categoricalVar], as.factor)
+      
       return(acsTibble)
     }
+    ```
 
-    ## Below is a test to show that it works
+```{r}
+    ## Test to show that the function works
     Result <- acsFunction(year = 2021, 
                         numericalVar = c("GASP", "GRPIP"),
                         categoricalVar = "HHL",
                         geography = "state",
                         geo_code = "06")
-    ```
+    
+    Result2 <- acsFunction(geography = "division",
+                           geo_code = "3")
+```
+
+```{r}
+test <- acsFunction(categoricalVar = NULL, numericalVar = c("JWAP","GASP"))
+str(test)
+test
+```
+
+    
