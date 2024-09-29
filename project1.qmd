@@ -19,51 +19,86 @@ Authors: Meerah Waters and Jack Wetzel
 2.  Then we need to call the API
 
     ```{r}
-    acsData <- GET('https://api.census.gov/data/2022/acs/acs1/pums?get=YOEP,AGEP,GASP,GRPIP,JWAP,JWDP,SEX,FER,HHL,HISPEED,JWTRNS,SCH,SCHL,PWGTP&SCHL=24&key=97a64e065dd2ad57196b96e8f6e9809d0ac9abc4')
+    acsData <- "https://api.census.gov/data/2022/acs/acs1/pums?get=YOEP,AGEP,GASP,GRPIP,JWAP,JWDP,SEX,FER,HHL,HISPEED,JWTRNS,SCH,SCHL,PWGTP&SCHL=24"
     ```
 
 3.  Then we need to parse the JSON data and put it in tibble format with the helper function
 
     ```{r}
-    apiHelper <- function(apiCall = acsData) {
+    apiHelper <- function(apiCall) {
+      acsData <- GET(apiCall)
       parsed <- fromJSON(rawToChar(acsData$content))
       acsDataTib <- as_tibble(parsed)
       names(acsDataTib)<-acsDataTib[1,]
       acsDataTib<- acsDataTib[-1,]
     }
-    print(apiHelper())
+    print(apiHelper(apiCall = acsData))
     ```
 
 4.  Now were going to write a function to query the API that will allow the user to specify certain items. The function allows for the individual to select what Numerical Variables they wish, Categorical Variables, and the Geography from the inputs into the function. How the function is written, causes only one singular "Geography" selection, while the Numerical and Categorical Variables are able to have multiple responses, as these are only the column headers being selected.
+```{r}
+year = 2022 
+numericalVar = c("PWGTP", "AGEP") 
+categoricalVar = "SEX" 
+geography = "region"
+geo_code = "04"
+variables <- paste(c(numericalVar, categoricalVar), collapse = ",")
+url <- paste0("https://api.census.gov/data/",
+                    year,
+                    "/acs/acs1/pums?get=",
+                    variables,
+                    "&for=",
+                    geography,
+                    ":",
+                    geo_code
+                    )
+url
+print(apiHelper(apiCall = url))
+```
 
     ```{r}
     acsFunction <- function(year = 2022, 
-                            NumericalVar = c("PWGTP", "AGEP"), 
-                            CategoricalVar = "SEX", 
-                            Geography) {
+                            numericalVar = c("PWGTP", "AGEP"), 
+                            categoricalVar = "SEX", 
+                            geography = "state",
+                            geo_code = "04") {
 
       if (year > 2022 | year < 2010) {
         stop("Year must be between 2010 and 2022")
       }
-      ####The below area with "glue" allows for the URL to by dynamically changed based off the selection within Geography. To use "all" as an         option, would be a different type of URL, possibly with the removal of the "&for={Geography}" section, but this wasn't working on its own        (I used an ifelse statement to make 'url' and 'url2', but that failed)####
       
-      url<-glue::glue('https://api.census.gov/data/2022/acs/acs1/pums?get=YOEP,AGEP,GASP,GRPIP,JWAP,JWDP,SEX,FER,HHL,HISPEED,JWTRNS,SCH,SCHL,PWGTP&for={Geography}:04&key=97a64e065dd2ad57196b96e8f6e9809d0ac9abc4')
+      if (!(geography %in% c("state", "division", "region"))) {
+        stop("Invalid Geography value, must be: (state, division, region)")
+      }
       
-      acsData <- GET(url)
+      if (is.null(geo_code)) {
+        geo_code <- "*"
+      }
+      variables <- paste(c(numericalVar, categoricalVar), collapse = ",")
       
-      parsed <- fromJSON(rawToChar(acsData$content))
+      ## Ensures PWGTP is always printed
+      if (!("PWGTP") %in% numericalVar) {
+        variables <- paste("PWGTP", variables, sep = ",")
+        
+      }
+      url <- paste0("https://api.census.gov/data/",
+                    year,
+                    "/acs/acs1/pums?get=",
+                    variables,
+                    "&for=",
+                    geography,
+                    ":",
+                    geo_code
+                    )
       
-      acsDataTib <- as_tibble(parsed)
-      names(acsDataTib)<-acsDataTib[1,]
-      acsDataTib<- acsDataTib[-1,]
-      
-      acsDataTibFiltered<-acsDataTib %>% 
-        filter(YOEP == {year}) %>% 
-        select(YOEP, "PWGTP", {NumericalVar}, {CategoricalVar})
+      acsTibble <- apiHelper(apiCall = url)
+      return(acsTibble)
     }
 
-    ####Below is a Test to show that it works####
-
-    Result<-acsFunction(2022,"PWGTP",c("FER","HHL"),"state")
-    Result2<-acsFunction(2022,"PWGTP","FER","division")
+    ## Below is a test to show that it works
+    Result <- acsFunction(year = 2021, 
+                        numericalVar = c("GASP", "GRPIP"),
+                        categoricalVar = "HHL",
+                        geography = "state",
+                        geo_code = "06")
     ```
