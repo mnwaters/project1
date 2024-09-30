@@ -14,6 +14,8 @@ Authors: Meerah Waters and Jack Wetzel
     library(httr)
     library(tibble)
     library(dplyr)
+    library(tidyr)
+    library(lubridate)
     ```
 
 2.  Then we need to call the API
@@ -35,27 +37,6 @@ Authors: Meerah Waters and Jack Wetzel
     ```
 
 4.  Now were going to write a function to query the API that will allow the user to specify certain items. The function allows for the individual to select a year, what Numerical Variables they wish, Categorical Variables, and the Geography from the inputs into the function. How the function is written, causes only one singular "Geography" selection, while the Numerical and Categorical Variables are able to have multiple responses, as these are only the column headers being selected.
-```{r}
-year = 2022 
-numericalVar = c("PWGTP", "AGEP") 
-categoricalVar = "SEX" 
-geography = "region"
-geo_code = "04"
-variables <- paste(c(numericalVar, categoricalVar), collapse = ",")
-url <- paste0("https://api.census.gov/data/",
-                    year,
-                    "/acs/acs1/pums?get=",
-                    variables,
-                    "&for=",
-                    geography,
-                    ":",
-                    geo_code
-                    )
-url
-temp <- apiHelper(apiCall = url)
-temp$AGEP <- as.numeric(temp$AGEP)
-temp
-```
 
     ```{r}
     acsFunction <- function(year = 2022, 
@@ -113,9 +94,111 @@ temp
       ## Making variables factors
       acsTibble[categoricalVar] <- lapply(acsTibble[categoricalVar], as.factor)
       
+      ## Formatting the time variables
+      if ("JWAP" %in% numericalVar) {
+        temp <- GET("https://api.census.gov/data/2022/acs/acs1/pums/variables/JWAP.json")
+        temp_list <- temp$content |> rawToChar() |> fromJSON()
+        temp_JWAP <- temp_list$values$item
+        JWAP_values <- JWAP[sort(names(temp_JWAP))]
+        acsTibble$JWAP[1] <- 0
+        
+        for (i in 2:length(JWAP_values)) {
+          time_strings <- strsplit(JWAP_values[[i]], " to ")
+          time_1 <- time_strings[[1]][1]
+          time_2 <- time_strings[[1]][2]
+          
+          if (grepl("a\\.m\\.", time_1)) {
+            time_form_1 <- gsub("a\\.m\\.", "AM", time_1)
+          } else {
+            time_form_1 <- gsub("p\\.m\\.", "PM", time_1)
+          }
+          
+          if (grepl("a\\.m\\.", time_2)) {
+            time_form_2 <- gsub("a\\.m\\.", "AM", time_2)
+          } else {
+            time_form_2 <- gsub("p\\.m\\.", "PM", time_2)
+          }
+          
+          time_24_1 <- format(strptime(time_form_1, "%I:%M %p"), format="%H:%M")
+          time_24_2 <- format(strptime(time_form_2, "%I:%M %p"), format="%H:%M")
+          
+          time_parts_1 <- strsplit(time_24_1, ":")[[1]]
+          time_parts_2 <- strsplit(time_24_2, ":")[[1]]
+          
+          hours_1 <- as.numeric(time_parts_1[1])
+          hours_2 <- as.numeric(time_parts_2[1])
+          minutes_1 <- as.numeric(time_parts_1[2])
+          minutes_2 <- as.numeric(time_parts_2[2])
+          
+          total_time_1 <- hours_1 * 60 + minutes_1
+          total_time_2 <- hours_2 * 60 + minutes_2
+          
+          acsTibble$JWAP[i] <- (total_time_1 + total_time_2) / 2
+        }
+      }
+      
       return(acsTibble)
     }
     ```
+    
+    ```{r}
+# Code intended for testing time variable conversion. will be deleted once project complete
+temp <- httr::GET("https://api.census.gov/data/2022/acs/acs1/pums/variables/JWAP.json")
+
+temp_list <- temp$content |> rawToChar() |> jsonlite::fromJSON()
+
+JWAP <- temp_list$values$item
+
+JWAP_values <- JWAP[sort(names(JWAP))]
+time_str <- strsplit(JWAP_values[[3]], " to ")
+time_test <- time_str[[1]][2]
+time_24 <- gsub("a\\.m\\.", "AM", time_test)
+
+formatted_time <- format(strptime(time_24, "%I:%M %p"), format="%H:%M")
+formatted_time
+
+time_parts <- strsplit(formatted_time, ":")[[1]]
+hours <- as.numeric(time_parts[1])
+minutes <- as.numeric(time_parts[2]) 
+hours * 60 + minutes
+average_time <- c()
+average_time[1] <- 0
+
+for (i in 2:length(JWAP_values)) {
+  time_strings <- strsplit(JWAP_values[[i]], " to ")
+  time_1 <- time_strings[[1]][1]
+  time_2 <- time_strings[[1]][2]
+  
+  if (grepl("a\\.m\\.", time_1)) {
+    time_form_1 <- gsub("a\\.m\\.", "AM", time_1)
+  } else {
+    time_form_1 <- gsub("p\\.m\\.", "PM", time_1)
+  }
+  
+  if (grepl("a\\.m\\.", time_2)) {
+    time_form_2 <- gsub("a\\.m\\.", "AM", time_2)
+  } else {
+    time_form_2 <- gsub("p\\.m\\.", "PM", time_2)
+  }
+  
+  time_24_1 <- format(strptime(time_form_1, "%I:%M %p"), format="%H:%M")
+  time_24_2 <- format(strptime(time_form_2, "%I:%M %p"), format="%H:%M")
+  
+  time_parts_1 <- strsplit(time_24_1, ":")[[1]]
+  time_parts_2 <- strsplit(time_24_2, ":")[[1]]
+  
+  hours_1 <- as.numeric(time_parts_1[1])
+  hours_2 <- as.numeric(time_parts_2[1])
+  minutes_1 <- as.numeric(time_parts_1[2])
+  minutes_2 <- as.numeric(time_parts_2[2])
+  
+  total_time_1 <- hours_1 * 60 + minutes_1
+  total_time_2 <- hours_2 * 60 + minutes_2
+  
+  average_time[i] <- (total_time_1 + total_time_2) / 2
+}
+average_time
+```
 
 ```{r}
     ## Test to show that the function works
@@ -130,9 +213,33 @@ temp
 ```
 
 ```{r}
-test <- acsFunction(categoricalVar = NULL, numericalVar = c("JWAP","GASP"))
-str(test)
+test <- acsFunction(numericalVar = c("JWAP","GASP"))
 test
 ```
 
-    
+5.  Now we will build a new function that has similar parameters to the one in step 4 with the exception of allowing the user to specify multiple years. This will call the previous function multiple times and combine multiple tibbles into one.
+
+```{r}
+acsMultiYear <- function(years,
+                         numericalVar = c("PWGTP", "AGEP"), 
+                         categoricalVar = "SEX", 
+                         geography = "state",
+                         geo_code = "04") {
+  tibbleList <- list()
+  for (i in 1:length(years)) {
+    singleYrTib <- acsFunction(years[i], numericalVar, categoricalVar, geography, geo_code)
+    singleYrTib$year <- years[i]
+    tibbleList[[i]] <- singleYrTib
+  }
+  multYrTib <- bind_rows(tibbleList)
+  return(multYrTib)
+}
+```
+
+```{r}
+multYrTest <- acsMultiYear(years = c(2021, 2022))
+head(multYrTest)
+tail(multYrTest)
+```
+
+
