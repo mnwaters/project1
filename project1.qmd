@@ -306,10 +306,14 @@ testsummary<-summary.census(testsumtibble,
     summaryplotfunct<-function(dataset = testsummary,
                       numericalVar = "mean_GASP",
                       categoricalVar = "mean_HHL"){
+      
+      dataset$PWGTP <- as.numeric(dataset$PWGTP)
+      
       ggplot(dataset,
              aes({{categoricalVar}},
                  {{numericalVar}},
-                 weight = PWGTP)) +
+                 weight = PWGTP,
+                 group = PWGTP)) +
         geom_boxplot()
       
     }
