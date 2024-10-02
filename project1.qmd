@@ -102,7 +102,7 @@ Authors: Meerah Waters and Jack Wetzel
         temp_list <- temp$content |> rawToChar() |> fromJSON()
         temp_JWAP <- temp_list$values$item
         JWAP_values <- JWAP[sort(names(temp_JWAP))]
-        acsTibble$JWAP[1] <- 0
+        JWAP_values[1] <- 0
         
         for (i in 2:length(JWAP_values)) {
           time_strings <- strsplit(JWAP_values[[i]], " to ")
@@ -135,7 +135,7 @@ Authors: Meerah Waters and Jack Wetzel
           total_time_1 <- hours_1 * 60 + minutes_1
           total_time_2 <- hours_2 * 60 + minutes_2
           
-          acsTibble$JWAP[i] <- (total_time_1 + total_time_2) / 2
+          JWAP_values[i] <- (total_time_1 + total_time_2) / 2
         }
       }
       
