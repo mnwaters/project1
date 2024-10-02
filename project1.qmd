@@ -6,7 +6,7 @@ Authors: Meerah Waters and Jack Wetzel
 
 ## Task 1: Data Processing
 
-1.  First we need to install the tidycensus, jsonlite, httr, and the tibble packages
+1.  First we need to install the necessary R packages that are used in the generic functions in this exercise.
 
     ```{r}
     library(tidycensus)
@@ -16,6 +16,8 @@ Authors: Meerah Waters and Jack Wetzel
     library(dplyr)
     library(tidyr)
     library(lubridate)
+    library(tidyselect)
+    library(ggplot2)
     ```
 
 2.  Then we need to call the API
@@ -140,65 +142,65 @@ Authors: Meerah Waters and Jack Wetzel
       return(acsTibble)
     }
     ```
-    
+
     ```{r}
-# Code intended for testing time variable conversion. will be deleted once project complete
-temp <- httr::GET("https://api.census.gov/data/2022/acs/acs1/pums/variables/JWAP.json")
+    # Code intended for testing time variable conversion. will be deleted once project complete
+    temp <- httr::GET("https://api.census.gov/data/2022/acs/acs1/pums/variables/JWAP.json")
 
-temp_list <- temp$content |> rawToChar() |> jsonlite::fromJSON()
+    temp_list <- temp$content |> rawToChar() |> jsonlite::fromJSON()
 
-JWAP <- temp_list$values$item
+    JWAP <- temp_list$values$item
 
-JWAP_values <- JWAP[sort(names(JWAP))]
-time_str <- strsplit(JWAP_values[[3]], " to ")
-time_test <- time_str[[1]][2]
-time_24 <- gsub("a\\.m\\.", "AM", time_test)
+    JWAP_values <- JWAP[sort(names(JWAP))]
+    time_str <- strsplit(JWAP_values[[3]], " to ")
+    time_test <- time_str[[1]][2]
+    time_24 <- gsub("a\\.m\\.", "AM", time_test)
 
-formatted_time <- format(strptime(time_24, "%I:%M %p"), format="%H:%M")
-formatted_time
+    formatted_time <- format(strptime(time_24, "%I:%M %p"), format="%H:%M")
+    formatted_time
 
-time_parts <- strsplit(formatted_time, ":")[[1]]
-hours <- as.numeric(time_parts[1])
-minutes <- as.numeric(time_parts[2]) 
-hours * 60 + minutes
-average_time <- c()
-average_time[1] <- 0
+    time_parts <- strsplit(formatted_time, ":")[[1]]
+    hours <- as.numeric(time_parts[1])
+    minutes <- as.numeric(time_parts[2]) 
+    hours * 60 + minutes
+    average_time <- c()
+    average_time[1] <- 0
 
-for (i in 2:length(JWAP_values)) {
-  time_strings <- strsplit(JWAP_values[[i]], " to ")
-  time_1 <- time_strings[[1]][1]
-  time_2 <- time_strings[[1]][2]
-  
-  if (grepl("a\\.m\\.", time_1)) {
+    for (i in 2:length(JWAP_values)) {
+      time_strings <- strsplit(JWAP_values[[i]], " to ")
+      time_1 <- time_strings[[1]][1]
+      time_2 <- time_strings[[1]][2]
+      
+      if (grepl("a\\.m\\.", time_1)) {
     time_form_1 <- gsub("a\\.m\\.", "AM", time_1)
-  } else {
+      } else {
     time_form_1 <- gsub("p\\.m\\.", "PM", time_1)
-  }
-  
-  if (grepl("a\\.m\\.", time_2)) {
+      }
+      
+      if (grepl("a\\.m\\.", time_2)) {
     time_form_2 <- gsub("a\\.m\\.", "AM", time_2)
-  } else {
+      } else {
     time_form_2 <- gsub("p\\.m\\.", "PM", time_2)
-  }
-  
-  time_24_1 <- format(strptime(time_form_1, "%I:%M %p"), format="%H:%M")
-  time_24_2 <- format(strptime(time_form_2, "%I:%M %p"), format="%H:%M")
-  
-  time_parts_1 <- strsplit(time_24_1, ":")[[1]]
-  time_parts_2 <- strsplit(time_24_2, ":")[[1]]
-  
-  hours_1 <- as.numeric(time_parts_1[1])
-  hours_2 <- as.numeric(time_parts_2[1])
-  minutes_1 <- as.numeric(time_parts_1[2])
-  minutes_2 <- as.numeric(time_parts_2[2])
-  
-  total_time_1 <- hours_1 * 60 + minutes_1
-  total_time_2 <- hours_2 * 60 + minutes_2
-  
-  average_time[i] <- (total_time_1 + total_time_2) / 2
-}
-average_time
-```
+      }
+      
+      time_24_1 <- format(strptime(time_form_1, "%I:%M %p"), format="%H:%M")
+      time_24_2 <- format(strptime(time_form_2, "%I:%M %p"), format="%H:%M")
+      
+      time_parts_1 <- strsplit(time_24_1, ":")[[1]]
+      time_parts_2 <- strsplit(time_24_2, ":")[[1]]
+      
+      hours_1 <- as.numeric(time_parts_1[1])
+      hours_2 <- as.numeric(time_parts_2[1])
+      minutes_1 <- as.numeric(time_parts_1[2])
+      minutes_2 <- as.numeric(time_parts_2[2])
+      
+      total_time_1 <- hours_1 * 60 + minutes_1
+      total_time_2 <- hours_2 * 60 + minutes_2
+      
+      average_time[i] <- (total_time_1 + total_time_2) / 2
+    }
+    average_time
+    ```
 
 ```{r}
     ## Test to show that the function works
@@ -242,4 +244,78 @@ head(multYrTest)
 tail(multYrTest)
 ```
 
+6.  In this step, we are creating a summary function of our overall tibble, while also adding a new class to the overall data. The summary is dependent on the numerical and categorical variables selected in the acsFunction previously.
 
+    ```{r}
+
+    summary.census<-function(
+        classcensus = acsTibble,
+        numericalVar = c("AGEP"),
+        categoricalVar = "SEX"){
+        
+        #adding the class to the tibble#
+        class(classcensus)<- c("census", class(classcensus))
+        
+        if (is.null(categoricalVar)) {
+        stop("Atleast one categorical variable, that was selected in the acsFunction, must be returned")
+      }
+      
+      if (is.null(numericalVar)) {
+        stop("One numeric variable, that was selected in the acsFunction, other than PWGTP must be returned")
+      }
+        
+        #Changing PWGTP to a factor to not be summarized#
+        classcensus$PWGTP <- as.factor(classcensus$PWGTP)
+        
+        #Changing categorical variables back into numeric variables to be summarized#
+        classcensus[categoricalVar] <- lapply(classcensus[categoricalVar], as.numeric)
+        
+        #Summary of the Tibble by PWGTP and Geographical selections with the mean and standard deviations#
+        acsTibblesummary<-classcensus %>% 
+          group_by(PWGTP) %>% 
+          mutate(across(is.numeric, mean, .names = "mean_{.col}"),
+                 across(is.numeric, sd, .names = "sd_{.col}")) %>% 
+          select(PWGTP, any_of(c("state","region", "division")), starts_with("mean"),starts_with("sd_"),-starts_with("sd_mean_")) %>% 
+          distinct()
+        
+        
+        acsTibblesummary
+      }
+      
+    ```
+
+```{r}
+ #test of the summary data#
+testsumtibble<-acsFunction(year = 2021, 
+                        numericalVar = c("GASP", "GRPIP"),
+                        categoricalVar = "HHL",
+                        geography = "state",
+                        geo_code = "06")
+testsummary<-summary.census(testsumtibble, 
+                            numericalVar = c("GASP", "GRPIP"),
+                            categoricalVar = "HHL")
+
+
+
+```
+
+7.  After creating our summary of our selected data, we are now able to plot the data in a digestible graph!
+
+    ```{r}
+
+    summaryplotfunct<-function(dataset = testsummary,
+                      numericalVar = "mean_GASP",
+                      categoricalVar = "mean_HHL"){
+      ggplot(dataset,
+             aes({{categoricalVar}},
+                 {{numericalVar}},
+                 weight = PWGTP)) +
+        geom_boxplot()
+      
+    }
+    ```
+
+    ```{r}
+
+    summaryplotfunct(testsummary, mean_GASP, mean_HHL)
+    ```
