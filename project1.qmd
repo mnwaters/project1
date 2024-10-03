@@ -42,7 +42,7 @@ Authors: Meerah Waters and Jack Wetzel
 
     ```{r}
     acsFunction <- function(year = 2022, 
-                            numericalVar = c("PWGTP", "AGEP", "JWAP"), 
+                            numericalVar = c("PWGTP", "AGEP"), 
                             categoricalVar = "SEX", 
                             geography = "state",
                             geo_code = "04") {
@@ -89,7 +89,8 @@ Authors: Meerah Waters and Jack Wetzel
       acsTibble <- apiHelper(apiCall = url)
       
       ## Making variables numeric
-      # acsTibble[numericalVar] <- lapply(acsTibble[numericalVar], as.numeric)
+      numericalVar <- numericalVar[!(numericalVar %in% c("JWAP", "JWDP"))]
+      acsTibble[numericalVar] <- lapply(acsTibble[numericalVar], as.numeric)
       acsTibble$PWGTP <- as.numeric(acsTibble$PWGTP)
       
       ## Making variables factors
@@ -100,7 +101,7 @@ Authors: Meerah Waters and Jack Wetzel
         temp <- GET("https://api.census.gov/data/2022/acs/acs1/pums/variables/JWAP.json")
         temp_list <- temp$content |> rawToChar() |> fromJSON()
         temp_JWAP <- temp_list$values$item
-        JWAP_values <- JWAP[sort(names(temp_JWAP))]
+        JWAP_values <- temp_JWAP[sort(names(temp_JWAP))]
         JWAP_values[1] <- 0
         
         for (i in 2:length(JWAP_values)) {
@@ -136,70 +137,15 @@ Authors: Meerah Waters and Jack Wetzel
           
           JWAP_values[i] <- (total_time_1 + total_time_2) / 2
         }
-        vec <- c()
+        vec <- list()
         vec <- sapply(acsTibble$JWAP, function(x) JWAP_values[[x]])
+        vec <- sapply(vec, function(x) if (is.null(x)) NA else x)
         vec_num <- unname(unlist(vec))
-        acsTibble$JWAP <- as.numeric(acsTibble$JWAP)
         acsTibble$JWAP <- vec_num
       }
       
       return(acsTibble)
     }
-    acsFunction()
-    ```
-
-    ```{r}
-    # Code intended for testing time variable conversion. will be deleted once project complete
-    temp <- httr::GET("https://api.census.gov/data/2022/acs/acs1/pums/variables/JWAP.json")
-
-    temp_list <- temp$content |> rawToChar() |> jsonlite::fromJSON()
-
-    JWAP <- temp_list$values$item
-
-    JWAP_values <- JWAP[sort(names(JWAP))]
-
-    average_time <- c()
-    JWAP_values[1] <- 0
-
-    for (i in 2:length(JWAP_values)) {
-      time_strings <- strsplit(JWAP_values[[i]], " to ")
-      time_1 <- time_strings[[1]][1]
-      time_2 <- time_strings[[1]][2]
-      
-      if (grepl("a\\.m\\.", time_1)) {
-    time_form_1 <- gsub("a\\.m\\.", "AM", time_1)
-      } else {
-    time_form_1 <- gsub("p\\.m\\.", "PM", time_1)
-      }
-      
-      if (grepl("a\\.m\\.", time_2)) {
-    time_form_2 <- gsub("a\\.m\\.", "AM", time_2)
-      } else {
-    time_form_2 <- gsub("p\\.m\\.", "PM", time_2)
-      }
-      
-      time_24_1 <- format(strptime(time_form_1, "%I:%M %p"), format="%H:%M")
-      time_24_2 <- format(strptime(time_form_2, "%I:%M %p"), format="%H:%M")
-      
-      time_parts_1 <- strsplit(time_24_1, ":")[[1]]
-      time_parts_2 <- strsplit(time_24_2, ":")[[1]]
-      
-      hours_1 <- as.numeric(time_parts_1[1])
-      hours_2 <- as.numeric(time_parts_2[1])
-      minutes_1 <- as.numeric(time_parts_1[2])
-      minutes_2 <- as.numeric(time_parts_2[2])
-      
-      total_time_1 <- hours_1 * 60 + minutes_1
-      total_time_2 <- hours_2 * 60 + minutes_2
-      
-      JWAP_values[i] <- (total_time_1 + total_time_2) / 2
-    }
-    JWAP_values
-    vec1 <- c('003', '001', '007', '0', '045', '102', '024', '006')
-    vec2 <- c('0', '001', '002', '003', '004', '005', '006', '007')
-    JWAP_df <- data.frame(vec1, vec2)
-    JWAP_df$vec1 <- sapply(JWAP_df$vec1, function(x) JWAP_values[[x]])
-    JWAP_df
     ```
 
 ```{r}
