@@ -40,22 +40,6 @@ Authors: Meerah Waters and Jack Wetzel
 
 4.  Now were going to write a function to query the API that will allow the user to specify certain items. The function allows for the individual to select a year, what Numerical Variables they wish, Categorical Variables, and the Geography from the inputs into the function. How the function is written, causes only one singular "Geography" selection, while the Numerical and Categorical Variables are able to have multiple responses, as these are only the column headers being selected.
 
-```{r}
-catFun <- function(catVars = c("SEX")) {
-  for (i in 1:length(catVars)) {
-    cat_url <- paste0("https://api.census.gov/data/2022/acs/acs1/pums/variables/",
-                      catVars[1],
-                      ".json")
-    temp <- GET(cat_url)
-    temp_list <- temp$content |> rawToChar() |> fromJSON()
-    temp_cat <- temp_list$values$item
-    cat_values <- temp_cat[sort(names(temp_cat))]
-    acsTibble[catVars[1]] <- sapply(acsTibble[catVars[1]], function(x) cat_values[[x]])
-  }
-}
-```
-
-
     ```{r}
     acsFunction <- function(year = 2022, 
                             numericalVar = c("PWGTP", "AGEP"), 
@@ -127,7 +111,7 @@ catFun <- function(catVars = c("SEX")) {
         acsTibble[cat_var] <- vec_num
       }
       
-      ## Formatting the time variables
+      ## Formatting the time variables as minutes since midnight
       if ("JWAP" %in% colnames(acsTibble)) {
         temp <- GET("https://api.census.gov/data/2022/acs/acs1/pums/variables/JWAP.json")
         temp_list <- temp$content |> rawToChar() |> fromJSON()
@@ -222,6 +206,22 @@ catFun <- function(catVars = c("SEX")) {
         acsTibble$JWDP <- vec_num
       }
       
+      ## Removing geography columns from final tibble
+      if ("state" %in% colnames(acsTibble)) {
+        acsTibble <- acsTibble |>
+          select(-state)
+      }
+      
+      if ("division" %in% colnames(acsTibble)) {
+        acsTibble <- acsTibble |>
+          select(-division)
+      }
+      
+      if ("region" %in% colnames(acsTibble)) {
+        acsTibble <- acsTibble |>
+          select(-region)
+      }
+      
       return(acsTibble)
     }
     ```
@@ -229,6 +229,7 @@ catFun <- function(catVars = c("SEX")) {
 ```{r}
 test <- acsFunction(categoricalVar = c("HHL", "FER"), numericalVar = c("JWDP","GASP"))
 test
+defaultTibble <- acsFunction()
 ```
 
 5.  Now we will build a new function that has similar parameters to the one in step 4 with the exception of allowing the user to specify multiple years. This will call the previous function multiple times and combine multiple tibbles into one.
@@ -251,50 +252,47 @@ acsMultiYear <- function(years,
 ```
 
 ```{r}
-multYrTest <- acsMultiYear(years = c(2021, 2022))
+multYrTest <- acsMultiYear(years = c(2018, 2021, 2022))
 head(multYrTest)
 tail(multYrTest)
 ```
 
 6.  In this step, we are creating a summary function of our overall tibble, while also adding a new class to the overall data. The summary is dependent on the numerical and categorical variables selected in the acsFunction previously.
 
-    ```{r}
+```{r}
+summary.census <- function(
+    classcensus = defaultTibble,
+    numericalVar = NULL,
+    categoricalVar = NULL) {
+    
+    #adding the class to the tibble#
+    class(classcensus) <- c("census", class(classcensus))
+    
+    if (is.null(numericalVar)) {
+      numericalVar <- classcensus |>
+        select_if(is.numeric) |>
+        select(-PWGTP)
+    }
+  
+    if (is.null(categoricalVar)) {
+      categoricalVar <- classcensus |>
+        select_if(is.character)
+    }
+    
+    #Summary of the Tibble by PWGTP and Geographical selections with the mean and standard deviations#
+    acsTibbleSummary <- classcensus |>
+      group_by(PWGTP) |>
+      mutate(across(where(is.numeric), 
+                    list(mean = mean, sd = sd), 
+                    .names = "{.col}_{.fn}")) |>
+      select(PWGTP, ends_with("mean"), 
+             ends_with("sd"))
+    
+    return(acsTibbleSummary)
+}
 
-    summary.census<-function(
-        classcensus = acsTibble,
-        numericalVar = c("AGEP"),
-        categoricalVar = "SEX"){
-        
-        #adding the class to the tibble#
-        class(classcensus)<- c("census", class(classcensus))
-        
-        if (is.null(categoricalVar)) {
-        stop("Atleast one categorical variable, that was selected in the acsFunction, must be returned")
-      }
-      
-      if (is.null(numericalVar)) {
-        stop("One numeric variable, that was selected in the acsFunction, other than PWGTP must be returned")
-      }
-        
-        #Changing PWGTP to a factor to not be summarized#
-        classcensus$PWGTP <- as.factor(classcensus$PWGTP)
-        
-        #Changing categorical variables back into numeric variables to be summarized#
-        classcensus[categoricalVar] <- lapply(classcensus[categoricalVar], as.numeric)
-        
-        #Summary of the Tibble by PWGTP and Geographical selections with the mean and standard deviations#
-        acsTibblesummary<-classcensus %>% 
-          group_by(PWGTP) %>% 
-          mutate(across(is.numeric, mean, .names = "mean_{.col}"),
-                 across(is.numeric, sd, .names = "sd_{.col}")) %>% 
-          select(PWGTP, any_of(c("state","region", "division")), starts_with("mean"),starts_with("sd_"),-starts_with("sd_mean_")) %>% 
-          distinct()
-        
-        
-        acsTibblesummary
-      }
-      
-    ```
+summary.census()
+```
 
 ```{r}
  #test of the summary data#
