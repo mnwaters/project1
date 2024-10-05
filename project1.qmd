@@ -8,7 +8,7 @@ Authors: Meerah Waters and Jack Wetzel
 
 1.  First we need to install the necessary R packages that are used in the generic functions in this exercise.
 
-```{r}
+```{r, message=FALSE}
 library(tidycensus)
 library(jsonlite)
 library(httr)
@@ -56,7 +56,7 @@ acsFunction <- function(year = 2022,
     stop("One categorical variable must be returned")
   }
   
-  if (is.null(numericalVar)) {
+  if (is.null(numericalVar) | all(numericalVar == "PWGTP")) {
     stop("One numeric variable other than PWGTP must be returned")
   }
   
@@ -229,9 +229,24 @@ acsFunction <- function(year = 2022,
 }
 ```
 
+Now we will test that the acsFunction works as intended. This will be done by giving it different inputs to ensure that all exceptions are handled properly. More test were done than shown below throughout the coding process, but the ones below show a good picture.
+
+```{r, error=TRUE}
+## Test includes values different than function defaults for each input and tests time variable formatting
+acsFunction(year = 2019, categoricalVar = c("HISPEED", "SCH"), numericalVar = c("JWAP"), geography = "region", geo_code = "01")
+
+## Tests function when only some inputs are specified
+acsFunction(numericalVar = c("JWMNP", "GASP"), geography = "division", geo_code = "5")
+
+## Tests the checks for valid function inputs
+acsFunction(year = 2008)
+acsFunction(categoricalVar = NULL)
+acsFunction(numericalVar = c("PWGTP"))
+acsFunction(geography = "city")
+```
+
 ```{r}
-test <- acsFunction(categoricalVar = c("HHL", "FER"), numericalVar = c("JWDP","GASP"))
-test
+## Runs the acsFunction with default inputs
 defaultTibble <- acsFunction()
 ```
 
@@ -243,16 +258,22 @@ acsMultiYear <- function(years,
                          categoricalVar = c("SEX"), 
                          geography = "state",
                          geo_code = "04") {
+  
   tibbleList <- list()
+  
   for (i in 1:length(years)) {
     singleYrTib <- acsFunction(years[i], numericalVar, categoricalVar, geography, geo_code)
-    singleYrTib$year <- years[i]
+    singleYrTib$year <- years[i]  ## creates a new variable based on the year
     tibbleList[[i]] <- singleYrTib
   }
+  
   multYrTib <- bind_rows(tibbleList)
+  
   return(multYrTib)
 }
 ```
+
+We will now test that the acsMultiYear function works by giving it an input with two different years. Due to high processing time of including multiple years, the head and tail functions were used. 
 
 ```{r}
 multYrTest <- acsMultiYear(years = c(2018, 2021))
@@ -260,7 +281,7 @@ head(multYrTest)
 tail(multYrTest)
 ```
 
-6.  In this step, we are creating a summary function of our overall tibble, while also adding a new class to the overall data. The summary is dependent on the numerical and categorical variables selected in the acsFunction previously.
+6.  In this step, we are creating a summary function of our overall tibble, while also adding a new class to the overall data. The summary is dependent on the numerical and categorical variables selected in the acsFunction previously. By default, the function will summarize all variables present in the given tibble, but users can specify the only summarize specific ones.
 
 ```{r}
 acsSummary <- function(classcensus = defaultTibble,
@@ -273,7 +294,7 @@ acsSummary <- function(classcensus = defaultTibble,
     ## Checks if user specifies variables
     if (!is.null(numericalVar)) {
       classcensus <- classcensus |>
-        select(where(is.factor), PWGTP, numericalVar)
+        select(where(is.factor), PWGTP, all_of(numericalVar))
     }
     
     if (!is.null(categoricalVar)) {
@@ -299,16 +320,18 @@ acsSummary <- function(classcensus = defaultTibble,
       distinct()
     
     ## Combines the numerical and categorical tibbles
-    acsTibbleSummary <- full_join(acsSummaryCat, acsSummaryNum) |>
-      group_by(PWGTP)
+    acsTibbleSummary <- full_join(acsSummaryCat, acsSummaryNum)
       
     return(acsTibbleSummary)
 }
 ```
 
+Now we will test that the acsSummary function works as intended. This test makes sure that there are columns for the categorical variable counts along with a column for the mean & sd of numerical variables. It also tests that users are able to specify to summarize only specific variables from the original tibble.
+
 ```{r}
 test_tibble <- acsFunction(2021, categoricalVar = c("HHL", "FER"), numericalVar = c("JWAP", "GASP"))
 testsummary <- acsSummary(classcensus = test_tibble, numericalVar = c("JWAP"), categoricalVar = ("HHL"))
+testsummary
 ```
 
 7.  After creating our summary of our selected data, we are now able to plot the data in a digestible graph!
