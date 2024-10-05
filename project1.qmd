@@ -111,6 +111,9 @@ Authors: Meerah Waters and Jack Wetzel
         acsTibble[cat_var] <- vec_num
       }
       
+      acsTibble <- acsTibble |>
+        mutate(across(where(is.character), as.factor))
+      
       ## Formatting the time variables as minutes since midnight
       if ("JWAP" %in% colnames(acsTibble)) {
         temp <- GET("https://api.census.gov/data/2022/acs/acs1/pums/variables/JWAP.json")
@@ -271,23 +274,44 @@ summary.census <- function(
     if (is.null(numericalVar)) {
       numericalVar <- classcensus |>
         select_if(is.numeric) |>
-        select(-PWGTP)
+        select(-PWGTP) |>
+        colnames()
     }
-  
+    
     if (is.null(categoricalVar)) {
       categoricalVar <- classcensus |>
-        select_if(is.character)
+        select_if(is.factor) |>
+        colnames()
     }
     
     #Summary of the Tibble by PWGTP and Geographical selections with the mean and standard deviations#
-    acsTibbleSummary <- classcensus |>
+    for (i in 1:length(categoricalVar)) {
+      tibble_list <- list()
+      tibble_list[i] <- classcensus |>
+        group_by(PWGTP) |>
+        select(-colnames(numericalVar)) |>
+        pivot_wider(names_from = categoricalVar[i], values_from = categoricalVar[i], values_fn = length, values_fill = 0) |>
+        arrange(PWGTP)
+      if (i == 1) {
+        acsSummaryCat <- tibble_list[1]
+      } else {
+        acsSummaryCat <- full_join(tibble_list[i], tibble_list[i-1])
+      }
+    }
+    
+    
+    acsSummaryNum <- classcensus |>
       group_by(PWGTP) |>
       mutate(across(where(is.numeric), 
                     list(mean = mean, sd = sd), 
                     .names = "{.col}_{.fn}")) |>
+      arrange(PWGTP) |>
       select(PWGTP, ends_with("mean"), 
-             ends_with("sd"))
+             ends_with("sd")) |>
+      distinct()
     
+    acsTibbleSummary <- full_join(acsSummaryCat, acsSummaryNum)
+      
     return(acsTibbleSummary)
 }
 
