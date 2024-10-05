@@ -56,7 +56,7 @@ acsFunction <- function(year = 2022,
     stop("One categorical variable must be returned")
   }
   
-  if (is.null(numericalVar)) {
+  if (is.null(numericalVar) | numericalVar == "PWGTP") {
     stop("One numeric variable other than PWGTP must be returned")
   }
   
@@ -121,8 +121,9 @@ acsFunction <- function(year = 2022,
     temp_list <- temp$content |> rawToChar() |> fromJSON()
     temp_JWAP <- temp_list$values$item
     JWAP_values <- temp_JWAP[sort(names(temp_JWAP))]
-    JWAP_values[1] <- 0
+    JWAP_values[1] <- 0  ## sets first value to 0 as the for loop does not work for it
     
+    ## Transforms list from time ranges to minute since midnight
     for (i in 2:length(JWAP_values)) {
       time_strings <- strsplit(JWAP_values[[i]], " to ")
       time_1 <- time_strings[[1]][1]
@@ -157,9 +158,10 @@ acsFunction <- function(year = 2022,
       JWAP_values[i] <- (total_time_1 + total_time_2) / 2
     }
     
+    ## Applying the list values to the JWAP column
     plac_list <- list()
     plac_list <- sapply(acsTibble$JWAP, function(x) JWAP_values[[x]])
-    plac_list <- sapply(vec, function(x) if (is.null(x)) NA else x)
+    plac_list <- sapply(plac_list, function(x) if (is.null(x)) NA else x)  ## Handling null values in JWAP
     plac <- unname(unlist(plac_list))
     acsTibble$JWAP <- plac
   }
@@ -169,8 +171,9 @@ acsFunction <- function(year = 2022,
     temp_list <- temp$content |> rawToChar() |> fromJSON()
     temp_JWDP <- temp_list$values$item
     JWDP_values <- temp_JWDP[sort(names(temp_JWDP))]
-    JWDP_values[1] <- 0
+    JWDP_values[1] <- 0 ## sets first value to 0 as the for loop does not work for it
     
+    ## Transforms list from time ranges to minute since midnight
     for (i in 2:length(JWDP_values)) {
       time_strings <- strsplit(JWDP_values[[i]], " to ")
       time_1 <- time_strings[[1]][1]
@@ -205,9 +208,10 @@ acsFunction <- function(year = 2022,
       JWDP_values[i] <- (total_time_1 + total_time_2) / 2
     }
     
+    ## Applying the list values to the JWDP column
     plac_list <- list()
     plac_list <- sapply(acsTibble$JWDP, function(x) JWDP_values[[x]])
-    plac_list <- sapply(vec, function(x) if (is.null(x)) NA else x)
+    plac_list <- sapply(plac_list, function(x) if (is.null(x)) NA else x)  ## Handling null values in JWDP
     plac <- unname(unlist(plac_list))
     acsTibble$JWDP <- plac
   }
@@ -232,7 +236,23 @@ acsFunction <- function(year = 2022,
 }
 ```
 
+Now we will test the function with mock outputs to ensure that specific exceptions are handled properly. These are just two examples of test, but many more were done throughout the function building process to ensure that a proper output will always be generated.
+
 ```{r}
+## Tests different values in all inputs than defaults, tests time variable
+acsFunction(year = 2019, categoricalVar = c("SCHL", "HISPEED"), numericalVar = c("JWAP"), geography = "state", geo_code = "11")
+
+## Tests unspecified values for some variables, tests different type of geography
+acsFunction(categoricalVar = c("SEX", "JWTRNS", "SCH"), geography = "region", geo_code = "01")
+
+## Tests that checks for valid input work
+acsFunction(year = 2008)
+acsFunction(categoricalVar = NULL)
+acsFunction(numericalVar = NULL)
+```
+
+```{r}
+## Running the function with default arguments
 defaultTibble <- acsFunction()
 ```
 
