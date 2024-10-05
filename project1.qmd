@@ -1,4 +1,4 @@
-Project 1
+### ST558 Project 1
 
 Objective: Create generic functions to automatically summarize and plot certain returned data.
 
@@ -8,231 +8,232 @@ Authors: Meerah Waters and Jack Wetzel
 
 1.  First we need to install the necessary R packages that are used in the generic functions in this exercise.
 
-    ```{r}
-    library(tidycensus)
-    library(jsonlite)
-    library(httr)
-    library(tibble)
-    library(dplyr)
-    library(tidyr)
-    library(lubridate)
-    library(tidyselect)
-    library(ggplot2)
-    ```
+```{r}
+library(tidycensus)
+library(jsonlite)
+library(httr)
+library(tibble)
+library(dplyr)
+library(tidyr)
+library(lubridate)
+library(tidyselect)
+library(ggplot2)
+```
 
-2.  Then we need to call the API
+2.  Then we need to call the API (this is the default API call)
 
-    ```{r}
-    acsData <- "https://api.census.gov/data/2022/acs/acs1/pums?get=PWGTP,AGEP,SEX&for=region:04"
-    ```
+```{r}
+acsData <- "https://api.census.gov/data/2022/acs/acs1/pums?get=PWGTP,AGEP,SEX&for=region:04"
+```
 
 3.  Then we need to parse the JSON data and put it in tibble format with the helper function
 
-    ```{r}
-    apiHelper <- function(apiCall) {
-      acsData <- GET(apiCall)
-      parsed <- fromJSON(rawToChar(acsData$content))
-      acsDataTib <- as_tibble(parsed)
-      names(acsDataTib) <- acsDataTib[1,]
-      acsDataTib <- acsDataTib[-1,]
-    }
-    ```
+```{r}
+apiHelper <- function(apiCall) {
+  acsData <- GET(apiCall)
+  parsed <- fromJSON(rawToChar(acsData$content))
+  acsDataTib <- as_tibble(parsed)
+  names(acsDataTib) <- acsDataTib[1, ]
+  acsDataTib <- acsDataTib[-1, ]
+}
+```
 
 4.  Now were going to write a function to query the API that will allow the user to specify certain items. The function allows for the individual to select a year, what Numerical Variables they wish, Categorical Variables, and the Geography from the inputs into the function. How the function is written, causes only one singular "Geography" selection, while the Numerical and Categorical Variables are able to have multiple responses, as these are only the column headers being selected.
 
-    ```{r}
-    acsFunction <- function(year = 2022, 
-                            numericalVar = c("PWGTP", "AGEP"), 
-                            categoricalVar = c("SEX"), 
-                            geography = "state",
-                            geo_code = "04") {
+```{r}
+acsFunction <- function(year = 2022, 
+                        numericalVar = c("PWGTP", "AGEP"), 
+                        categoricalVar = c("SEX"), 
+                        geography = "state",
+                        geo_code = "04") {
 
-      ## Checking if function input is valid
-      if (year > 2022 | year < 2010) {
-        stop("Year must be between 2010 and 2022")
+  ## Checking if function input is valid
+  if (year > 2022 | year < 2010) {
+    stop("Year must be between 2010 and 2022")
+  }
+  
+  if (is.null(categoricalVar)) {
+    stop("One categorical variable must be returned")
+  }
+  
+  if (is.null(numericalVar)) {
+    stop("One numeric variable other than PWGTP must be returned")
+  }
+  
+  if (!(geography %in% c("state", "division", "region"))) {
+    stop("Invalid Geography value, must be: (state, division, region)")
+  }
+  
+  ## Code to handle a lack of geo_code
+  if (is.null(geo_code)) {
+    geo_code <- "*"
+  }
+  
+  ## Building the URL
+  variables <- paste(c(numericalVar, categoricalVar), collapse = ",")
+  
+  ## Ensures PWGTP is always printed
+  if (!("PWGTP") %in% numericalVar) {
+    variables <- paste("PWGTP", variables, sep = ",")
+  }
+  
+  url <- paste0("https://api.census.gov/data/",
+                year,
+                "/acs/acs1/pums?get=",
+                variables,
+                "&for=",
+                geography,
+                ":",
+                geo_code
+                )
+  
+  acsTibble <- apiHelper(apiCall = url)
+  
+  ## Making numerical variables numeric
+  numericalVar <- numericalVar[!(numericalVar %in% c("JWAP", "JWDP"))]
+  acsTibble[numericalVar] <- lapply(acsTibble[numericalVar], as.numeric)
+  acsTibble$PWGTP <- as.numeric(acsTibble$PWGTP)
+  
+  ## Making categorical variables factors
+  for (i in 1:length(categoricalVar)) {
+    cat_url <- paste0("https://api.census.gov/data/2022/acs/acs1/pums/variables/",
+                      categoricalVar[i],
+                      ".json")
+    cat_var <- categoricalVar[i]
+    temp <- GET(cat_url)
+    temp_list <- temp$content |> rawToChar() |> fromJSON()
+    temp_cat <- temp_list$values$item
+    cat_values <- temp_cat[sort(names(temp_cat))]
+    
+    plac_list <- list()
+    plac_list <- sapply(acsTibble[cat_var], function(x) cat_values[x])
+    plac_list <- sapply(vec, function(x) if (is.null(x)) NA else x)
+    plac <- unname(unlist(plac_list))
+    acsTibble[cat_var] <- plac
+  }
+  
+  acsTibble <- acsTibble |>
+    mutate(across(where(is.character), as.factor))
+  
+  ## Formatting the time variables as minutes since midnight
+  if ("JWAP" %in% colnames(acsTibble)) {
+    temp <- GET("https://api.census.gov/data/2022/acs/acs1/pums/variables/JWAP.json")
+    temp_list <- temp$content |> rawToChar() |> fromJSON()
+    temp_JWAP <- temp_list$values$item
+    JWAP_values <- temp_JWAP[sort(names(temp_JWAP))]
+    JWAP_values[1] <- 0
+    
+    for (i in 2:length(JWAP_values)) {
+      time_strings <- strsplit(JWAP_values[[i]], " to ")
+      time_1 <- time_strings[[1]][1]
+      time_2 <- time_strings[[1]][2]
+      
+      if (grepl("a\\.m\\.", time_1)) {
+        time_form_1 <- gsub("a\\.m\\.", "AM", time_1)
+      } else {
+        time_form_1 <- gsub("p\\.m\\.", "PM", time_1)
       }
       
-      if (is.null(categoricalVar)) {
-        stop("One categorical variable must be returned")
+      if (grepl("a\\.m\\.", time_2)) {
+        time_form_2 <- gsub("a\\.m\\.", "AM", time_2)
+      } else {
+        time_form_2 <- gsub("p\\.m\\.", "PM", time_2)
       }
       
-      if (is.null(numericalVar)) {
-        stop("One numeric variable other than PWGTP must be returned")
-      }
+      time_24_1 <- format(strptime(time_form_1, "%I:%M %p"), format="%H:%M")
+      time_24_2 <- format(strptime(time_form_2, "%I:%M %p"), format="%H:%M")
       
-      if (!(geography %in% c("state", "division", "region"))) {
-        stop("Invalid Geography value, must be: (state, division, region)")
-      }
+      time_parts_1 <- strsplit(time_24_1, ":")[[1]]
+      time_parts_2 <- strsplit(time_24_2, ":")[[1]]
       
-      if (is.null(geo_code)) {
-        geo_code <- "*"
-      }
+      hours_1 <- as.numeric(time_parts_1[1])
+      hours_2 <- as.numeric(time_parts_2[1])
+      minutes_1 <- as.numeric(time_parts_1[2])
+      minutes_2 <- as.numeric(time_parts_2[2])
       
-      ## Building the URL
-      variables <- paste(c(numericalVar, categoricalVar), collapse = ",")
+      total_time_1 <- hours_1 * 60 + minutes_1
+      total_time_2 <- hours_2 * 60 + minutes_2
       
-      ## Ensures PWGTP is always printed
-      if (!("PWGTP") %in% numericalVar) {
-        variables <- paste("PWGTP", variables, sep = ",")
-      }
-      
-      url <- paste0("https://api.census.gov/data/",
-                    year,
-                    "/acs/acs1/pums?get=",
-                    variables,
-                    "&for=",
-                    geography,
-                    ":",
-                    geo_code
-                    )
-      
-      acsTibble <- apiHelper(apiCall = url)
-      
-      ## Making variables numeric
-      numericalVar <- numericalVar[!(numericalVar %in% c("JWAP", "JWDP"))]
-      acsTibble[numericalVar] <- lapply(acsTibble[numericalVar], as.numeric)
-      acsTibble$PWGTP <- as.numeric(acsTibble$PWGTP)
-      
-      ## Making variables factors
-      for (i in 1:length(categoricalVar)) {
-        cat_url <- paste0("https://api.census.gov/data/2022/acs/acs1/pums/variables/",
-                          categoricalVar[i],
-                          ".json")
-        cat_var <- categoricalVar[i]
-        temp <- GET(cat_url)
-        temp_list <- temp$content |> rawToChar() |> fromJSON()
-        temp_cat <- temp_list$values$item
-        cat_values <- temp_cat[sort(names(temp_cat))]
-        
-        vec <- list()
-        vec <- sapply(acsTibble[cat_var], function(x) cat_values[x])
-        vec <- sapply(vec, function(x) if (is.null(x)) NA else x)
-        vec_num <- unname(unlist(vec))
-        acsTibble[cat_var] <- vec_num
-      }
-      
-      acsTibble <- acsTibble |>
-        mutate(across(where(is.character), as.factor))
-      
-      ## Formatting the time variables as minutes since midnight
-      if ("JWAP" %in% colnames(acsTibble)) {
-        temp <- GET("https://api.census.gov/data/2022/acs/acs1/pums/variables/JWAP.json")
-        temp_list <- temp$content |> rawToChar() |> fromJSON()
-        temp_JWAP <- temp_list$values$item
-        JWAP_values <- temp_JWAP[sort(names(temp_JWAP))]
-        JWAP_values[1] <- 0
-        
-        for (i in 2:length(JWAP_values)) {
-          time_strings <- strsplit(JWAP_values[[i]], " to ")
-          time_1 <- time_strings[[1]][1]
-          time_2 <- time_strings[[1]][2]
-          
-          if (grepl("a\\.m\\.", time_1)) {
-            time_form_1 <- gsub("a\\.m\\.", "AM", time_1)
-          } else {
-            time_form_1 <- gsub("p\\.m\\.", "PM", time_1)
-          }
-          
-          if (grepl("a\\.m\\.", time_2)) {
-            time_form_2 <- gsub("a\\.m\\.", "AM", time_2)
-          } else {
-            time_form_2 <- gsub("p\\.m\\.", "PM", time_2)
-          }
-          
-          time_24_1 <- format(strptime(time_form_1, "%I:%M %p"), format="%H:%M")
-          time_24_2 <- format(strptime(time_form_2, "%I:%M %p"), format="%H:%M")
-          
-          time_parts_1 <- strsplit(time_24_1, ":")[[1]]
-          time_parts_2 <- strsplit(time_24_2, ":")[[1]]
-          
-          hours_1 <- as.numeric(time_parts_1[1])
-          hours_2 <- as.numeric(time_parts_2[1])
-          minutes_1 <- as.numeric(time_parts_1[2])
-          minutes_2 <- as.numeric(time_parts_2[2])
-          
-          total_time_1 <- hours_1 * 60 + minutes_1
-          total_time_2 <- hours_2 * 60 + minutes_2
-          
-          JWAP_values[i] <- (total_time_1 + total_time_2) / 2
-        }
-        vec <- list()
-        vec <- sapply(acsTibble$JWAP, function(x) JWAP_values[[x]])
-        vec <- sapply(vec, function(x) if (is.null(x)) NA else x)
-        vec_num <- unname(unlist(vec))
-        acsTibble$JWAP <- vec_num
-      }
-      
-      if ("JWDP" %in% colnames(acsTibble)) {
-        temp <- GET("https://api.census.gov/data/2022/acs/acs1/pums/variables/JWDP.json")
-        temp_list <- temp$content |> rawToChar() |> fromJSON()
-        temp_JWDP <- temp_list$values$item
-        JWDP_values <- temp_JWDP[sort(names(temp_JWDP))]
-        JWDP_values[1] <- 0
-        
-        for (i in 2:length(JWDP_values)) {
-          time_strings <- strsplit(JWDP_values[[i]], " to ")
-          time_1 <- time_strings[[1]][1]
-          time_2 <- time_strings[[1]][2]
-          
-          if (grepl("a\\.m\\.", time_1)) {
-            time_form_1 <- gsub("a\\.m\\.", "AM", time_1)
-          } else {
-            time_form_1 <- gsub("p\\.m\\.", "PM", time_1)
-          }
-          
-          if (grepl("a\\.m\\.", time_2)) {
-            time_form_2 <- gsub("a\\.m\\.", "AM", time_2)
-          } else {
-            time_form_2 <- gsub("p\\.m\\.", "PM", time_2)
-          }
-          
-          time_24_1 <- format(strptime(time_form_1, "%I:%M %p"), format="%H:%M")
-          time_24_2 <- format(strptime(time_form_2, "%I:%M %p"), format="%H:%M")
-          
-          time_parts_1 <- strsplit(time_24_1, ":")[[1]]
-          time_parts_2 <- strsplit(time_24_2, ":")[[1]]
-          
-          hours_1 <- as.numeric(time_parts_1[1])
-          hours_2 <- as.numeric(time_parts_2[1])
-          minutes_1 <- as.numeric(time_parts_1[2])
-          minutes_2 <- as.numeric(time_parts_2[2])
-          
-          total_time_1 <- hours_1 * 60 + minutes_1
-          total_time_2 <- hours_2 * 60 + minutes_2
-          
-          JWDP_values[i] <- (total_time_1 + total_time_2) / 2
-        }
-        vec <- list()
-        vec <- sapply(acsTibble$JWDP, function(x) JWDP_values[[x]])
-        vec <- sapply(vec, function(x) if (is.null(x)) NA else x)
-        vec_num <- unname(unlist(vec))
-        acsTibble$JWDP <- vec_num
-      }
-      
-      ## Removing geography columns from final tibble
-      if ("state" %in% colnames(acsTibble)) {
-        acsTibble <- acsTibble |>
-          select(-state)
-      }
-      
-      if ("division" %in% colnames(acsTibble)) {
-        acsTibble <- acsTibble |>
-          select(-division)
-      }
-      
-      if ("region" %in% colnames(acsTibble)) {
-        acsTibble <- acsTibble |>
-          select(-region)
-      }
-      
-      return(acsTibble)
+      JWAP_values[i] <- (total_time_1 + total_time_2) / 2
     }
-    ```
+    
+    plac_list <- list()
+    plac_list <- sapply(acsTibble$JWAP, function(x) JWAP_values[[x]])
+    plac_list <- sapply(vec, function(x) if (is.null(x)) NA else x)
+    plac <- unname(unlist(plac_list))
+    acsTibble$JWAP <- plac
+  }
+  
+  if ("JWDP" %in% colnames(acsTibble)) {
+    temp <- GET("https://api.census.gov/data/2022/acs/acs1/pums/variables/JWDP.json")
+    temp_list <- temp$content |> rawToChar() |> fromJSON()
+    temp_JWDP <- temp_list$values$item
+    JWDP_values <- temp_JWDP[sort(names(temp_JWDP))]
+    JWDP_values[1] <- 0
+    
+    for (i in 2:length(JWDP_values)) {
+      time_strings <- strsplit(JWDP_values[[i]], " to ")
+      time_1 <- time_strings[[1]][1]
+      time_2 <- time_strings[[1]][2]
+      
+      if (grepl("a\\.m\\.", time_1)) {
+        time_form_1 <- gsub("a\\.m\\.", "AM", time_1)
+      } else {
+        time_form_1 <- gsub("p\\.m\\.", "PM", time_1)
+      }
+      
+      if (grepl("a\\.m\\.", time_2)) {
+        time_form_2 <- gsub("a\\.m\\.", "AM", time_2)
+      } else {
+        time_form_2 <- gsub("p\\.m\\.", "PM", time_2)
+      }
+      
+      time_24_1 <- format(strptime(time_form_1, "%I:%M %p"), format="%H:%M")
+      time_24_2 <- format(strptime(time_form_2, "%I:%M %p"), format="%H:%M")
+      
+      time_parts_1 <- strsplit(time_24_1, ":")[[1]]
+      time_parts_2 <- strsplit(time_24_2, ":")[[1]]
+      
+      hours_1 <- as.numeric(time_parts_1[1])
+      hours_2 <- as.numeric(time_parts_2[1])
+      minutes_1 <- as.numeric(time_parts_1[2])
+      minutes_2 <- as.numeric(time_parts_2[2])
+      
+      total_time_1 <- hours_1 * 60 + minutes_1
+      total_time_2 <- hours_2 * 60 + minutes_2
+      
+      JWDP_values[i] <- (total_time_1 + total_time_2) / 2
+    }
+    
+    plac_list <- list()
+    plac_list <- sapply(acsTibble$JWDP, function(x) JWDP_values[[x]])
+    plac_list <- sapply(vec, function(x) if (is.null(x)) NA else x)
+    plac <- unname(unlist(plac_list))
+    acsTibble$JWDP <- plac
+  }
+  
+  ## Removing geography columns from final tibble
+  if ("state" %in% colnames(acsTibble)) {
+    acsTibble <- acsTibble |>
+      select(-state)
+  }
+  
+  if ("division" %in% colnames(acsTibble)) {
+    acsTibble <- acsTibble |>
+      select(-division)
+  }
+  
+  if ("region" %in% colnames(acsTibble)) {
+    acsTibble <- acsTibble |>
+      select(-region)
+  }
+  
+  return(acsTibble)
+}
+```
 
 ```{r}
-test <- acsFunction(categoricalVar = c("HHL", "FER"), numericalVar = c("JWDP","GASP"))
-test
-defaultTibble <- acsFunction(categoricalVar = c("HHL", "FER"), numericalVar = c("JWAP", "GASP"))
+defaultTibble <- acsFunction()
 ```
 
 5.  Now we will build a new function that has similar parameters to the one in step 4 with the exception of allowing the user to specify multiple years. This will call the previous function multiple times and combine multiple tibbles into one.
@@ -243,19 +244,24 @@ acsMultiYear <- function(years,
                          categoricalVar = c("SEX"), 
                          geography = "state",
                          geo_code = "04") {
+  
   tibbleList <- list()
+  
   for (i in 1:length(years)) {
     singleYrTib <- acsFunction(years[i], numericalVar, categoricalVar, geography, geo_code)
     singleYrTib$year <- years[i]
     tibbleList[[i]] <- singleYrTib
   }
+  
   multYrTib <- bind_rows(tibbleList)
+  
   return(multYrTib)
 }
 ```
 
 ```{r}
-multYrTest <- acsMultiYear(years = c(2018, 2021, 2022))
+## Testing the multi year function
+multYrTest <- acsMultiYear(years = c(2018, 2021))
 head(multYrTest)
 tail(multYrTest)
 ```
@@ -263,14 +269,14 @@ tail(multYrTest)
 6.  In this step, we are creating a summary function of our overall tibble, while also adding a new class to the overall data. The summary is dependent on the numerical and categorical variables selected in the acsFunction previously.
 
 ```{r}
-summary.census <- function(
-    classcensus = defaultTibble,
-    numericalVar = NULL,
-    categoricalVar = NULL) {
+acsSummary <- function(classcensus = defaultTibble,
+                       numericalVar = NULL,
+                       categoricalVar = NULL) {
     
-    #adding the class to the tibble#
+    ## Adding census class to the tibble
     class(classcensus) <- c("census", class(classcensus))
     
+    ## Handling case where user specifies variables
     if (!is.null(numericalVar)) {
       classcensus <- classcensus |>
         select(where(is.factor), PWGTP, numericalVar)
@@ -281,12 +287,13 @@ summary.census <- function(
         select(where(is.numeric), all_of(categoricalVar))
     }
     
-    #Summary of the Tibble by PWGTP and Geographical selections with the mean and standard deviations#
+    ## Creating tibble for counts of categorical variables
     acsSummaryCat <- classcensus |>
       pivot_longer(where(is.factor), names_to = "column_name", values_to = "var_count") |>
       count(PWGTP, column_name, var_count) |>
       pivot_wider(names_from = c(column_name, var_count), values_from = n, values_fill = 0)
     
+    ## Creating tibble for mean & sd of numerical variables
     acsSummaryNum <- classcensus |>
       group_by(PWGTP) |>
       mutate(across(where(is.numeric), 
@@ -297,6 +304,7 @@ summary.census <- function(
              ends_with("sd")) |>
       distinct()
     
+    ## Combining categorical and numerical tibbles into final summary result
     acsTibbleSummary <- full_join(acsSummaryCat, acsSummaryNum) |>
       group_by(PWGTP)
       
@@ -305,46 +313,25 @@ summary.census <- function(
 ```
 
 ```{r}
+## Testing the summary function
 test_tibble <- acsFunction(2021, categoricalVar = c("HHL", "FER"), numericalVar = c("JWAP", "GASP"))
-summary.census(classcensus = test_tibble, numericalVar = c("JWAP"), categoricalVar = ("HHL"))
-```
-
-```{r}
- #test of the summary data#
-testsumtibble<-acsFunction(year = 2021, 
-                        numericalVar = c("GASP", "GRPIP"),
-                        categoricalVar = "HHL",
-                        geography = "state",
-                        geo_code = "06")
-testsummary<-summary.census(testsumtibble, 
-                            numericalVar = c("GASP", "GRPIP"),
-                            categoricalVar = "HHL")
-
-
-
+testsummary <- summary.census(classcensus = test_tibble, numericalVar = c("JWAP"), categoricalVar = ("HHL"))
 ```
 
 7.  After creating our summary of our selected data, we are now able to plot the data in a digestible graph!
 
-    ```{r}
+```{r}
+acsPlot <- function(dataset = testsummary,
+                    numericalVar,
+                    categoricalVar) {
+  
+  ggplot(dataset,
+         aes(x = get(categoricalVar), y = get(numericalVar), weight = PWGTP)) +
+    geom_boxplot()
+}
+```
 
-    summaryplotfunct<-function(dataset = testsummary,
-                      numericalVar = "mean_GASP",
-                      categoricalVar = "mean_HHL"){
-      
-      dataset$PWGTP <- as.numeric(dataset$PWGTP)
-      
-      ggplot(dataset,
-             aes({{categoricalVar}},
-                 {{numericalVar}},
-                 weight = PWGTP,
-                 group = PWGTP)) +
-        geom_boxplot()
-      
-    }
-    ```
-
-    ```{r}
-
-    summaryplotfunct(testsummary, mean_GASP, mean_HHL)
-    ```
+```{r}
+## Testing the plot function
+acsPlot(testsummary, numericalVar = "JWAP_sd", categoricalVar = "HHL_Spanish")
+```
