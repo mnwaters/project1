@@ -232,7 +232,7 @@ Authors: Meerah Waters and Jack Wetzel
 ```{r}
 test <- acsFunction(categoricalVar = c("HHL", "FER"), numericalVar = c("JWDP","GASP"))
 test
-defaultTibble <- acsFunction()
+defaultTibble <- acsFunction(categoricalVar = c("HHL", "FER"), numericalVar = c("JWAP", "GASP"))
 ```
 
 5.  Now we will build a new function that has similar parameters to the one in step 4 with the exception of allowing the user to specify multiple years. This will call the previous function multiple times and combine multiple tibbles into one.
@@ -271,34 +271,21 @@ summary.census <- function(
     #adding the class to the tibble#
     class(classcensus) <- c("census", class(classcensus))
     
-    if (is.null(numericalVar)) {
-      numericalVar <- classcensus |>
-        select_if(is.numeric) |>
-        select(-PWGTP) |>
-        colnames()
+    if (!is.null(numericalVar)) {
+      classcensus <- classcensus |>
+        select(where(is.factor), PWGTP, numericalVar)
     }
     
-    if (is.null(categoricalVar)) {
-      categoricalVar <- classcensus |>
-        select_if(is.factor) |>
-        colnames()
+    if (!is.null(categoricalVar)) {
+      classcensus <- classcensus |>
+        select(where(is.numeric), all_of(categoricalVar))
     }
     
     #Summary of the Tibble by PWGTP and Geographical selections with the mean and standard deviations#
-    for (i in 1:length(categoricalVar)) {
-      tibble_list <- list()
-      tibble_list[i] <- classcensus |>
-        group_by(PWGTP) |>
-        select(-colnames(numericalVar)) |>
-        pivot_wider(names_from = categoricalVar[i], values_from = categoricalVar[i], values_fn = length, values_fill = 0) |>
-        arrange(PWGTP)
-      if (i == 1) {
-        acsSummaryCat <- tibble_list[1]
-      } else {
-        acsSummaryCat <- full_join(tibble_list[i], tibble_list[i-1])
-      }
-    }
-    
+    acsSummaryCat <- classcensus |>
+      pivot_longer(where(is.factor), names_to = "column_name", values_to = "var_count") |>
+      count(PWGTP, column_name, var_count) |>
+      pivot_wider(names_from = c(column_name, var_count), values_from = n, values_fill = 0)
     
     acsSummaryNum <- classcensus |>
       group_by(PWGTP) |>
@@ -310,12 +297,16 @@ summary.census <- function(
              ends_with("sd")) |>
       distinct()
     
-    acsTibbleSummary <- full_join(acsSummaryCat, acsSummaryNum)
+    acsTibbleSummary <- full_join(acsSummaryCat, acsSummaryNum) |>
+      group_by(PWGTP)
       
     return(acsTibbleSummary)
 }
+```
 
-summary.census()
+```{r}
+test_tibble <- acsFunction(2021, categoricalVar = c("HHL", "FER"), numericalVar = c("JWAP", "GASP"))
+summary.census(classcensus = test_tibble, numericalVar = c("JWAP"), categoricalVar = ("HHL"))
 ```
 
 ```{r}
