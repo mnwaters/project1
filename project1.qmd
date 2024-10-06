@@ -1,8 +1,12 @@
 # Project 1
 
-Objective: Create generic functions to automatically summarize and plot certain returned data.
+## Objective: Create generic functions to automatically summarize and plot certain returned data.
 
-Authors: Meerah Waters and Jack Wetzel
+## Authors: Meerah Waters and Jack Wetzel
+
+## Introduction
+
+This program is designed to create functions to retrieve and analyze data from the US census. The first portion will involve creating a function similar to the get_acs() function from the tidycensus package. It will take inputs from the user to specify the year, variables, and geographic location for which they wish to get data from. The function will then produce a tibble with data adhering to the specifies parameters. Afterwards, there will be additional functions that will allow the user to analyze the previously created tibble. The first is a summary function which will provide counts of categorical variables and basic statistical measures of the numerical variables. The second is a graphing function which takes the summary funciton as an input and produces a box plot based on specified variables.
 
 ## Task 1: Data Processing
 
@@ -38,7 +42,7 @@ apiHelper <- function(apiCall) {
 }
 ```
 
-4.  Now were going to write a function to query the API that will allow the user to specify certain items. The function allows for the individual to select a year, what Numerical Variables they wish, Categorical Variables, and the Geography from the inputs into the function. How the function is written, causes only one singular "Geography" selection, while the Numerical and Categorical Variables are able to have multiple responses, as these are only the column headers being selected.
+4.  Now were going to write a function to query the API that will allow the user to specify certain items. The function allows for the individual to select a year, Numerical Variables, Categorical Variables, and the Geographic area through the inputs of the function. How the function is written, causes only one singular "Geography" selection, while the Numerical and Categorical Variables are able to have multiple responses, as these are only the column headers being selected.
 
 ```{r}
 acsFunction <- function(year = 2022, 
@@ -120,7 +124,7 @@ acsFunction <- function(year = 2022,
     temp_list <- temp$content |> rawToChar() |> fromJSON()
     temp_JWAP <- temp_list$values$item
     JWAP_values <- temp_JWAP[sort(names(temp_JWAP))]
-    JWAP_values[1] <- 0
+    JWAP_values[1] <- 0  ## Sets the first value to 0 as the loop cannot handle the first value
     
     for (i in 2:length(JWAP_values)) {
       time_strings <- strsplit(JWAP_values[[i]], " to ")
@@ -167,7 +171,7 @@ acsFunction <- function(year = 2022,
     temp_list <- temp$content |> rawToChar() |> fromJSON()
     temp_JWDP <- temp_list$values$item
     JWDP_values <- temp_JWDP[sort(names(temp_JWDP))]
-    JWDP_values[1] <- 0
+    JWDP_values[1] <- 0  ## Sets the first value to 0 as the loop cannot handle the first value
     
     for (i in 2:length(JWDP_values)) {
       time_strings <- strsplit(JWDP_values[[i]], " to ")
@@ -229,7 +233,7 @@ acsFunction <- function(year = 2022,
 }
 ```
 
-Now we will test that the acsFunction works as intended. This will be done by giving it different inputs to ensure that all exceptions are handled properly. More test were done than shown below throughout the coding process, but the ones below show a good picture.
+Now we will test that the acsFunction works as intended. This will be done by giving it different inputs to ensure that all exceptions are handled properly. More tests were done than shown below throughout the coding process, but the ones below show a good picture.
 
 ```{r, error=TRUE}
 ## Test includes values different than function defaults for each input and tests time variable formatting
@@ -250,7 +254,7 @@ acsFunction(geography = "city")
 defaultTibble <- acsFunction()
 ```
 
-5.  Now we will build a new function that has similar parameters to the one in step 4 with the exception of allowing the user to specify multiple years. This will call the previous function multiple times and combine multiple tibbles into one.
+5.  Now we will build a new function that has similar parameters to the one in step 4 with the exception of allowing the user to specify multiple years. This will call the previous function multiple times and combine multiple tibbles into one. Additionally, it creates a new column titled year.
 
 ```{r}
 acsMultiYear <- function(years,
@@ -259,7 +263,7 @@ acsMultiYear <- function(years,
                          geography = "state",
                          geo_code = "04") {
   
-  tibbleList <- list()
+  tibbleList <- list()  ## initializing empty list for the loop
   
   for (i in 1:length(years)) {
     singleYrTib <- acsFunction(years[i], numericalVar, categoricalVar, geography, geo_code)
@@ -267,7 +271,7 @@ acsMultiYear <- function(years,
     tibbleList[[i]] <- singleYrTib
   }
   
-  multYrTib <- bind_rows(tibbleList)
+  multYrTib <- bind_rows(tibbleList)  ## combines the list of tibbles into a single tibble
   
   return(multYrTib)
 }
@@ -277,8 +281,8 @@ We will now test that the acsMultiYear function works by giving it an input with
 
 ```{r}
 multYrTest <- acsMultiYear(years = c(2018, 2021))
-head(multYrTest)
-tail(multYrTest)
+head(multYrTest)  ## year column is 2018
+tail(multYrTest)  ## year column is 2021
 ```
 
 6.  In this step, we are creating a summary function of our overall tibble, while also adding a new class to the overall data. The summary is dependent on the numerical and categorical variables selected in the acsFunction previously. By default, the function will summarize all variables present in the given tibble, but users can specify the only summarize specific ones.
