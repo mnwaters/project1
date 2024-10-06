@@ -1,8 +1,6 @@
 # Project 1
 
-## Objective: Create generic functions to automatically summarize and plot certain returned data.
-
-## Authors: Meerah Waters and Jack Wetzel
+Authors: Meerah Waters and Jack Wetzel
 
 ## Introduction
 
@@ -285,6 +283,8 @@ head(multYrTest)  ## year column is 2018
 tail(multYrTest)  ## year column is 2021
 ```
 
+## Task 2: Data Summary
+
 6.  In this step, we are creating a summary function of our overall tibble, while also adding a new class to the overall data. The summary is dependent on the numerical and categorical variables selected in the acsFunction previously. By default, the function will summarize all variables present in the given tibble, but users can specify the only summarize specific ones.
 
 ```{r}
@@ -312,7 +312,7 @@ acsSummary <- function(classcensus = defaultTibble,
       count(PWGTP, column_name, var_count) |>
       pivot_wider(names_from = c(column_name, var_count), values_from = n, values_fill = 0)
     
-    ## Creates a tibble with mean & sd of numerical variables
+    ## Creates a tibble with weighted mean & sd of numerical variables
     acsSummaryNum <- classcensus |>
       group_by(PWGTP) |>
       mutate(across(where(is.numeric), 
